@@ -10,7 +10,7 @@ type ConsumerGroupHandler interface {
 	Setup(sarama.ConsumerGroupSession) error
 	Cleanup(sarama.ConsumerGroupSession) error
 
-	ConmsumeClaim(sarama.ConsumerGroupSession, ConsumerGroupClaim) error
+	ConsumeClaim(sarama.ConsumerGroupSession, ConsumerGroupClaim) error
 }
 
 type ConsumerGroupClaim interface {
@@ -29,9 +29,7 @@ type ConsumerMessage struct {
 
 type consumerGroupHandler struct {
 	handler ConsumerGroupHandler
-	claim   *consumerGroupClaim
-
-	cfg *config
+	cfg     *config
 }
 
 func (h *consumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
@@ -46,21 +44,23 @@ func (h *consumerGroupHandler) ConsumeClaim(
 	sess sarama.ConsumerGroupSession,
 	claim sarama.ConsumerGroupClaim,
 ) error {
-	h.claim = &consumerGroupClaim{
+	wrappedClaim := &consumerGroupClaim{
 		claim:    claim,
 		messages: make(chan *ConsumerMessage),
 	}
-	for msg := range claim.Messages() {
-		wrappedMsg := &ConsumerMessage{
-			ConsumerMessage: msg,
-			Context:         context.Background(),
+	go func() {
+		for msg := range claim.Messages() {
+			wrappedMsg := &ConsumerMessage{
+				ConsumerMessage: msg,
+				Context:         context.Background(),
+			}
+			for _, interceptor := range h.cfg.consumerInterceptors {
+				interceptor.Before(wrappedMsg.Context, wrappedMsg.ConsumerMessage)
+			}
+			wrappedClaim.messages <- wrappedMsg
 		}
-		for _, interceptor := range h.cfg.consumerInterceptors {
-			interceptor.Before(wrappedMsg.Context, wrappedMsg.ConsumerMessage)
-		}
-		h.claim.messages <- wrappedMsg
-	}
-	return nil
+	}()
+	return h.handler.ConsumeClaim(sess, wrappedClaim)
 }
 
 type consumerGroupClaim struct {

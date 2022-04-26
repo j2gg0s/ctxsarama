@@ -61,8 +61,6 @@ func WrapAsyncProducer(saramaConfig *sarama.Config, p sarama.AsyncProducer, opts
 		AsyncProducer: p,
 
 		input:         make(chan *ProducerMessage),
-		successes:     make(chan *ProducerMessage),
-		errors:        make(chan *ProducerError),
 		closeErr:      make(chan error),
 		closeSig:      make(chan struct{}),
 		closeAsyncSig: make(chan struct{}),
@@ -95,10 +93,6 @@ func WrapAsyncProducer(saramaConfig *sarama.Config, p sarama.AsyncProducer, opts
 	}()
 
 	go func() {
-		defer func() {
-			close(wrapped.successes)
-		}()
-
 		for msg := range p.Successes() {
 			wrappedMsg := &ProducerMessage{
 				ProducerMessage: msg,
@@ -109,15 +103,10 @@ func WrapAsyncProducer(saramaConfig *sarama.Config, p sarama.AsyncProducer, opts
 			for _, interceptor := range wrapped.cfg.producerInterceptors {
 				interceptor.After(wrappedMsg.Context, msg, nil)
 			}
-			wrapped.successes <- wrappedMsg
 		}
 	}()
 
 	go func() {
-		defer func() {
-			close(wrapped.errors)
-		}()
-
 		for errMsg := range p.Errors() {
 			wrappedMsg := &ProducerError{
 				Msg: errMsg.Msg,
@@ -129,7 +118,6 @@ func WrapAsyncProducer(saramaConfig *sarama.Config, p sarama.AsyncProducer, opts
 			for _, interceptor := range wrapped.cfg.producerInterceptors {
 				interceptor.After(wrappedMsg.Context, errMsg.Msg, errMsg.Err)
 			}
-			wrapped.errors <- wrappedMsg
 		}
 	}()
 
@@ -140,8 +128,6 @@ type AsyncProducer struct {
 	sarama.AsyncProducer
 
 	input         chan *ProducerMessage
-	successes     chan *ProducerMessage
-	errors        chan *ProducerError
 	closeErr      chan error
 	closeSig      chan struct{}
 	closeAsyncSig chan struct{}
@@ -149,14 +135,13 @@ type AsyncProducer struct {
 	cfg *config
 }
 
-func (p *AsyncProducer) Input() chan<- *ProducerMessage     { return p.input }
-func (p *AsyncProducer) Successes() <-chan *ProducerMessage { return p.successes }
-func (p *AsyncProducer) Errors() <-chan *ProducerError      { return p.errors }
+func (p *AsyncProducer) Input() chan<- *ProducerMessage { return p.input }
 
 func (p *AsyncProducer) AsyncClose() {
 	close(p.input)
 	close(p.closeAsyncSig)
 }
+
 func (p *AsyncProducer) Close() error {
 	close(p.input)
 	close(p.closeSig)
