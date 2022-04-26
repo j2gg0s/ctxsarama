@@ -54,8 +54,11 @@ func (h *consumerGroupHandler) ConsumeClaim(
 				ConsumerMessage: msg,
 				Context:         context.Background(),
 			}
-			for _, interceptor := range h.cfg.consumerInterceptors {
-				interceptor.Before(wrappedMsg.Context, wrappedMsg.ConsumerMessage)
+			if chainInt := getChainConsumerInterceptor(h.cfg); chainInt != nil {
+				chainInt(wrappedMsg, func(msg *ConsumerMessage) {
+					wrappedClaim.messages <- wrappedMsg
+				})
+				continue
 			}
 			wrappedClaim.messages <- wrappedMsg
 		}

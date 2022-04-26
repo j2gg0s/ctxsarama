@@ -8,11 +8,16 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/j2gg0s/ctxsarama"
+	"github.com/j2gg0s/ctxsarama/ot"
 )
 
 func main() {
+	InitTracer()
+
 	cmd := &cobra.Command{
 		Use: "ctxsarama",
 	}
@@ -54,25 +59,37 @@ func produce(brokers []string, topic string) error {
 		return fmt.Errorf("failed to start producer: %w", err)
 	}
 
-	wrappedProducer := ctxsarama.WrapAsyncProducer(config, producer)
+	wrappedProducer := ctxsarama.WrapAsyncProducer(
+		config,
+		producer,
+		ctxsarama.WithProducerInterceptors(ot.NewProducerInterceptor()),
+	)
 
 	ticker := time.NewTicker(time.Millisecond * 100)
 	defer ticker.Stop()
 	for range ticker.C {
+		ctx, span := otel.Tracer("example").Start(context.Background(), "before_producer")
+
 		wrappedProducer.Input() <- &ctxsarama.ProducerMessage{
-			Context: context.Background(),
+			Context: ctx,
 			ProducerMessage: &sarama.ProducerMessage{
 				Topic: topic,
 				Value: sarama.StringEncoder(strconv.FormatInt(time.Now().UnixMilli(), 10)),
 			},
 		}
-		fmt.Println("send", time.Now().UnixMilli())
+		sc := span.SpanContext()
+		fmt.Println("produce", sc.TraceID(), sc.SpanID())
+
+		span.End()
 	}
 	return nil
 }
 
 func consume(brokers []string, topic string) error {
-	handler := ctxsarama.WrapConsumerGroupHandler(&Consumer{})
+	handler := ctxsarama.WrapConsumerGroupHandler(
+		&Consumer{},
+		ctxsarama.WithConsumerInterceptors(ot.NewConsumerInterceptor()),
+	)
 
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_0_0_0
@@ -89,8 +106,6 @@ func consume(brokers []string, topic string) error {
 	}
 
 	select {}
-
-	return nil
 }
 
 type Consumer struct {
@@ -108,7 +123,8 @@ func (c *Consumer) Cleanup(sarama.ConsumerGroupSession) error {
 
 func (c *Consumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim ctxsarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
-		fmt.Printf("receive msg: %v\n", msg.ConsumerMessage)
+		sc := trace.SpanContextFromContext(msg.Context)
+		fmt.Println("consume", sc.TraceID(), sc.SpanID())
 		sess.MarkMessage(msg.ConsumerMessage, "")
 	}
 	return nil
