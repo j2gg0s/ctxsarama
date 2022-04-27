@@ -20,6 +20,8 @@ type ConsumerGroupClaim interface {
 	HighWaterMarkOffset() int64
 
 	Messages() <-chan *ConsumerMessage
+
+	PartitionConsumer() (sarama.PartitionConsumer, bool)
 }
 
 type ConsumerMessage struct {
