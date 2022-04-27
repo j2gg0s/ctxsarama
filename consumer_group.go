@@ -77,6 +77,11 @@ func (c *consumerGroupClaim) InitialOffset() int64              { return c.claim
 func (c *consumerGroupClaim) HighWaterMarkOffset() int64        { return c.claim.HighWaterMarkOffset() }
 func (c *consumerGroupClaim) Messages() <-chan *ConsumerMessage { return c.messages }
 
+func (c *consumerGroupClaim) PartitionConsumer() (sarama.PartitionConsumer, bool) {
+	pc, ok := c.claim.(sarama.PartitionConsumer)
+	return pc, ok
+}
+
 func WrapConsumerGroupHandler(h ConsumerGroupHandler, opts ...Option) sarama.ConsumerGroupHandler {
 	handler := &consumerGroupHandler{
 		handler: h,
