@@ -19,11 +19,15 @@ type ProducerInterceptorFuncs struct {
 var _ ProducerInterceptor = (*ProducerInterceptorFuncs)(nil)
 
 func (p *ProducerInterceptorFuncs) Before(ctx context.Context, msg *sarama.ProducerMessage) {
-	p.BeforeFn(ctx, msg)
+	if p.BeforeFn != nil {
+		p.BeforeFn(ctx, msg)
+	}
 }
 
 func (p *ProducerInterceptorFuncs) After(ctx context.Context, msg *sarama.ProducerMessage, err error) {
-	p.AfterFn(ctx, msg, err)
+	if p.AfterFn != nil {
+		p.AfterFn(ctx, msg, err)
+	}
 }
 
 type ConsumerHandler func(*ConsumerMessage)
