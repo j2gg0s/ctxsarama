@@ -11,6 +11,21 @@ type ProducerInterceptor interface {
 	After(context.Context, *sarama.ProducerMessage, error)
 }
 
+type ProducerInterceptorFuncs struct {
+	BeforeFn func(context.Context, *sarama.ProducerMessage)
+	AfterFn  func(context.Context, *sarama.ProducerMessage, error)
+}
+
+var _ ProducerInterceptor = (*ProducerInterceptorFuncs)(nil)
+
+func (p *ProducerInterceptorFuncs) Before(ctx context.Context, msg *sarama.ProducerMessage) {
+	p.BeforeFn(ctx, msg)
+}
+
+func (p *ProducerInterceptorFuncs) After(ctx context.Context, msg *sarama.ProducerMessage, err error) {
+	p.AfterFn(ctx, msg, err)
+}
+
 type ConsumerHandler func(*ConsumerMessage)
 type ConsumerInterceptor func(*ConsumerMessage, ConsumerHandler)
 
