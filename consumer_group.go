@@ -64,6 +64,7 @@ func (h *consumerGroupHandler) ConsumeClaim(
 			}
 			wrappedClaim.messages <- wrappedMsg
 		}
+		close(wrappedClaim.messages)
 	}()
 	return h.handler.ConsumeClaim(sess, wrappedClaim)
 }
